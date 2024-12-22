@@ -10,7 +10,8 @@ import pyautogui
 import numpy as np
 from PIL import Image, ImageGrab
 from config import *
-
+import random
+import string
 
 # audio setting
 FORMAT = pyaudio.paInt16
@@ -146,3 +147,10 @@ def decompress_image(image_bytes):
     image = Image.open(img_byte_arr)
 
     return image
+
+
+def generate_id(self):
+        """
+        Generate a random 6-character alphanumeric ID.
+        """
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=6))

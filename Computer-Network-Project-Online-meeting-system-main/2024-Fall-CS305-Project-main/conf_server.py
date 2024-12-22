@@ -53,6 +53,10 @@ class MainServer:
         """
         create conference: create and start the corresponding ConferenceServer, and reply necessary info to client
         """
+        id = generate_id()
+        self.conference_servers[id] = ConferenceServer()
+        
+        
 
     def handle_join_conference(self, conference_id):
         """
