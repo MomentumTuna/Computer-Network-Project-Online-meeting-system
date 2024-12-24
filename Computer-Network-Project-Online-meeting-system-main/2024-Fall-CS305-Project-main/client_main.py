@@ -106,7 +106,7 @@ class ClientMain:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.connect(self.server_addr)
-                sock.sendall(json.dumps(request).encode())
+                sock.sendall(request.encode())
                 response = sock.recv(1024).decode()
                 return response
         except Exception as e:
