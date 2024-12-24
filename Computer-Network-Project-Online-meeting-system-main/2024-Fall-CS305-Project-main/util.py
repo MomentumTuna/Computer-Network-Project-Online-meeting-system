@@ -154,3 +154,34 @@ def generate_id(self):
         Generate a random 6-character alphanumeric ID.
         """
         return ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+
+
+def is_valid_ip(ip):
+    """
+    判断一个字符串是否是合法的IPv4地址。
+    
+    :param ip: str，待验证的IP地址
+    :return: bool，是否合法
+    """
+    # 按点分隔地址
+    parts = ip.split(".")
+    
+    # IPv4地址必须包含4部分
+    if len(parts) != 4:
+        return False
+    
+    for part in parts:
+        # 每部分必须是数字
+        if not part.isdigit():
+            return False
+        
+        # 每部分必须在0到255之间
+        num = int(part)
+        if num < 0 or num > 255:
+            return False
+        
+        # 避免前导零（如 "01", "001" 是非法的）
+        if part != str(num):
+            return False
+    
+    return True
