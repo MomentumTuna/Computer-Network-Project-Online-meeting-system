@@ -45,7 +45,7 @@ class MainServer:
         self.server_ip = server_ip
         self.server_port = main_port
         self.main_server = None
-
+        self.conference_id = generate_id()
         self.conference_conns = None
         self.conference_servers = {}  # self.conference_servers[conference_id] = ConferenceManager
 
