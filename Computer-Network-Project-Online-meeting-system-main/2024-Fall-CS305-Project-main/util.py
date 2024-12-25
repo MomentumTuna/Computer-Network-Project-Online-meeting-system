@@ -35,6 +35,39 @@ def audio_device_info():
         info = audio.get_device_info_by_index(i)
         print(f"设备索引: {i}, 设备名称: {info['name']}, 最大输入通道数: {info['maxInputChannels']}")
 
+def mix_audio(audio_list):
+    """
+    混合多个字节流音频数据
+    :param audio_list: list of bytes, 每个音频帧的字节流
+    :return: bytes, 混合后的音频数据（字节流）
+    """
+    if not audio_list:  # 如果列表为空，返回空字节
+        return b''
+
+    # 将字节流转换为 NumPy 数组
+    audio_arrays = [np.frombuffer(audio, dtype=np.int16) for audio in audio_list]
+
+    # 找到最大长度
+    max_length = max(len(arr) for arr in audio_arrays)
+
+    # 填充数组以使形状一致
+    audio_arrays = [np.pad(arr, (0, max_length - len(arr)), mode='constant') for arr in audio_arrays]
+
+    # 转换为高精度类型以避免溢出
+    audio_arrays = [arr.astype(np.int32) for arr in audio_arrays]
+
+    # 求和
+    mixed_audio = np.sum(audio_arrays, axis=0)
+
+    # 限制范围并转换回 int16
+    mixed_audio = np.clip(mixed_audio, -32768, 32767).astype(np.int16)
+
+    # 转换为字节流并返回
+    return mixed_audio.tobytes()
+
+def audio_out(frame):
+    streamout.write(frame)
+
 def resize_image_to_fit_screen(image, my_screen_size):
     screen_width, screen_height = my_screen_size
 

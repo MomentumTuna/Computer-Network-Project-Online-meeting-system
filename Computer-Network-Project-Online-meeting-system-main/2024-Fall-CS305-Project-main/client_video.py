@@ -6,23 +6,20 @@ from udp_video import*
 from keyboard import*
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
-
-SERVER_ADDRESS = ('127.0.0.1', 11111)  # 服务端地址和端口
-BUFFER_SIZE = 4096  # 每次接收的最大数据量
-CACHE_SIZE = 30  # 缓存队列大小（存储 30 帧）
+from config import CONFERENCE1_AUDIO_ADDRESS, CONFERENCE1_VIDEO_ADDRESS, CONFERENCE2_AUDIO_ADDRESS, CONFERENCE2_VIDEO_ADDRESS, CONFERENCE3_AUDIO_ADDRESS, CONFERENCE3_VIDEO_ADDRESS
 
 
-class ClientProtocol(UDPVideoProtocol):
+class ClientVideoProtocol(UDPVideoProtocol):
     """
     客户端协议类，继承 UDPVideoProtocol
     """
     SERVER_ADDRESS=None
-    def __init__(self,SERVER_ADDRESS,conference_id):
-        super().__init__(conference_id)
+    def __init__(self,SERVER_ADDRESS):
+        super().__init__()
         self.SERVER_ADDRESS=SERVER_ADDRESS
 
     async def get_a_frame(self):
-        return await super().get_a_frame(SERVER_ADDRESS)
+        return await super().get_a_frame(self.SERVER_ADDRESS)
 
 
     async def image_transport(self,state):
@@ -44,7 +41,7 @@ class ClientProtocol(UDPVideoProtocol):
                     # 调用父类的 send_image 方法发送图像
                 await self.send_image(image, self.SERVER_ADDRESS)
             else:
-                header = f"{self.CONFERENCE_ID}/M/0/{1500}/{1500}".encode()
+                header = f"M/0/{1500}/{1500}".encode()
                 self.transport.sendto(header + b"|" + b"", self.SERVER_ADDRESS)
                 print("已经发送结束信号")
             
@@ -73,7 +70,7 @@ class ClientProtocol(UDPVideoProtocol):
 
             # 显示图片
             try:
-                cv2.imshow("Video Stream", frame)
+                cv2.imshow(f"Video Stream {self.SERVER_ADDRESS}", frame)
                 cv2.waitKey(2)
             except Exception as e:
                 print(f"显示视频时发生错误: {e}")
@@ -121,7 +118,7 @@ def check_exit(state):
     else:
         return False        
 
-async def video_streaming(address,conference_id):
+async def video_streaming(address):
     """
     主函数，负责建立 UDP 客户端并启动任务
     """
@@ -135,7 +132,7 @@ async def video_streaming(address,conference_id):
     loop = asyncio.get_running_loop()
     # 创建 UDP 客户端
     transport, protocol = await loop.create_datagram_endpoint(
-        lambda: ClientProtocol(address,conference_id),
+        lambda: ClientVideoProtocol(address,),
         remote_addr=address
     )
     
@@ -171,10 +168,10 @@ if __name__ == "__main__":
     # 初始化共享状态
     # 启动异步主函数
     # executor = ThreadPoolExecutor(max_workers=2)
-    asyncio.run(video_streaming(SERVER_ADDRESS,1))
-    
-    # executor.shutdown(wait=True)
-    # print("线程池已关闭")
+    try:
+        asyncio.run(video_streaming(CONFERENCE3_VIDEO_ADDRESS))
+    except Exception as e:
+        print(f"发生错误: {e}")
     print('后续逻辑')
 
     

@@ -2,16 +2,15 @@ import asyncio
 from util import *
 from udp_video import UDPVideoProtocol
 import numpy as np
-import cv2
 from datetime import datetime, timedelta
+from multiprocessing import Process
+from config import CONFERENCE1_AUDIO_ADDRESS, CONFERENCE1_VIDEO_ADDRESS, CONFERENCE2_AUDIO_ADDRESS, CONFERENCE2_VIDEO_ADDRESS, CONFERENCE3_AUDIO_ADDRESS, CONFERENCE3_VIDEO_ADDRESS
 
-SERVER_ADDRESS = ('127.0.0.1', 11111)  # 服务端地址和端口
 
-
-class ServerProtocol(UDPVideoProtocol):
+class ServerVideoProtocol(UDPVideoProtocol):
     clients = set()  # 记录所有连接的客户端地址
-    def __init__(self,conference_id):
-        super().__init__(conference_id)
+    def __init__(self):
+        super().__init__()
         self.clients = set()  # 记录所有连接的客户端地址
     
     def datagram_received(self,data,addr):
@@ -29,18 +28,15 @@ class ServerProtocol(UDPVideoProtocol):
 
         if addr not in self.QUEUE_MAP:
             # self.QUEUE_MAP[addr] = asyncio.Queue(maxsize=self.CASH_SIZE)
-            self.QUEUE_MAP[addr] = {}
-            self.QUEUE_MAP[addr]['M']=asyncio.Queue(maxsize=self.CASH_SIZE)
-            self.QUEUE_MAP[addr]['A']=asyncio.Queue(maxsize=self.CASH_SIZE)
+            self.QUEUE_MAP[addr] = asyncio.Queue(maxsize=self.CASH_SIZE)
             print(f"新客户端连接: {addr},数据缓存队列初始化完成")
 
 
         header, chunk = data.split(b"|", 1)  # 分离头部和数据
         header_parts=header.decode().split("/")
-        conference_id=header_parts[0]
-        datatype=header_parts[1]
-        sequence_number,index, total = map(int, header_parts[2:])  # 解析头部
-        
+        datatype=header_parts[0]
+        sequence_number,index, total = map(int, header_parts[1:])  # 解析头部
+
         if index==1500 and total==1500:
             del self.QUEUE_MAP[addr]
             # del self.DATA_MAP[addr]
@@ -52,69 +48,39 @@ class ServerProtocol(UDPVideoProtocol):
         # 如果 `addr` 不在 `DATA_MAP` 中，初始化为一个空字典
             self.DATA_MAP[addr] = {}
 
-        if datatype not in self.DATA_MAP[addr]:
-            # 如果 `datatype` 不在 `addr` 的字典中，初始化为一个空字典
-            self.DATA_MAP[addr][datatype] = {}
+        # if datatype not in self.DATA_MAP[addr]:
+        #     # 如果 `datatype` 不在 `addr` 的字典中，初始化为一个空字典
+        #     self.DATA_MAP[addr][datatype] = {}
 
-        if sequence_number not in self.DATA_MAP[addr][datatype]:
+        if sequence_number not in self.DATA_MAP[addr]:
             # 如果 `sequence_number` 不在 `datatype` 的字典中，初始化为一个空字典
-            self.DATA_MAP[addr][datatype][sequence_number] = [None]*total
+            self.DATA_MAP[addr][sequence_number] = [None]*total
 
-        self.DATA_MAP[addr][datatype][sequence_number][index] = chunk  # 存储当前分片
-        print(f'存储当前分片 {conference_id} {addr} {datatype} {sequence_number} {index}')
+        self.DATA_MAP[addr][sequence_number][index] = chunk  # 存储当前分片
+        print(f'存储当前视屏分片{addr} {sequence_number} {index}')
+
+        try:
         # 如果所有分片都已接收，返回完整数据
-        # if all(self.DATA_MAP[addr]):
-        #     complete_data = b"".join(self.DATA_MAP[addr])
-        #     del self.DATA_MAP[addr]  # 清理已完成的记录
-        #     try:
-        #         # 将完整帧放入该客户端的队列
-        #         self.QUEUE_MAP[addr].put_nowait(complete_data)
+            for key1 in list(self.DATA_MAP[addr]):
+                if all(self.DATA_MAP[addr][key1]):
+                    complete_data = b"".join(self.DATA_MAP[addr][key1])
+                    del self.DATA_MAP[addr][key1]  # 清理已完成的记录
+                    try:
+                        # 将完整帧放入该客户端的队列
+                        self.QUEUE_MAP[addr].put_nowait(complete_data)
+                        print(f"完整帧已存入队列:{key1}{addr}")
+                    except asyncio.QueueFull:
+                        self.QUEUE_MAP[addr].get_nowait()  # 丢弃最旧的帧
+                        self.QUEUE_MAP[addr].put_nowait(complete_data)
+                        # print(f"队列已满，丢弃数据: {addr}")
+        except Exception as e:
+            print(f"处理数据时发生错误: {e}")
 
-        #         # print(f"完整帧已存入队列: {addr}")
-        #     except asyncio.QueueFull:
-        #         self.QUEUE_MAP[addr].get_nowait()  # 丢弃最旧的帧
-        #         self.QUEUE_MAP[addr].put_nowait(complete_data)
-        #         # print(f"队列已满，丢弃数据: {addr}")
 
     async def broadcast_frames(self):
         """
         从队列中取出完整帧，并广播给所有客户端
         """
-        try:
-            # 并发从所有客户端获取帧
-            image_list = await asyncio.gather(
-                *(self.get_a_frame(client) for client in self.clients),
-                return_exceptions=True  # 捕获可能的异常
-            )
-        except Exception as e:
-            print(f"获取帧时出错: {e}")
-
-        try:
-            background = capture_screen()
-            if len(image_list):
-                all_image = overlay_camera_images(background, image_list)
-            else:
-                print('image_list is empty')
-                all_image = background
-        except Exception as e:
-            print(f"合成图像时出错: {e}")
-        
-        try:
-            # 将合成的图像广播给所有客户端
-            await asyncio.gather(
-                *(self.send_image(all_image, client) for client in self.clients),
-                return_exceptions=True  # 捕获可能的异常
-            )
-            print('广播图像成功')
-        except Exception as e:
-            print(f"广播数据时出错: {e}")
-        
-
-    async def test():
-        await asyncio.sleep(0.1)
-
-        
-    async def get_frames(self):
         try:
             image_list = []
             for client in self.clients:
@@ -129,19 +95,16 @@ class ServerProtocol(UDPVideoProtocol):
         except Exception as e:
             print(f"获取帧时出错: {e}")
 
-        # 捕获屏幕背景
-        background = capture_screen()
-
         try:
+            background = capture_screen()
             if len(image_list):
-                all_image = overlay_camera_images(background, image_list)  # 合成图像
-                print("合成了图像")
+                all_image = overlay_camera_images(background, image_list)
             else:
+                print('image_list is empty')
                 all_image = background
         except Exception as e:
             print(f"合成图像时出错: {e}")
-
-        # 顺序广播图像给客户端
+        
         try:
             for client in self.clients:
                 try:
@@ -151,11 +114,11 @@ class ServerProtocol(UDPVideoProtocol):
                     print(f"向客户端 {client} 发送图像时出错: {e}")
         except Exception as e:
             print(f"发送图像时出错: {e}")
+        await asyncio.sleep(0.0001)
+        
 
-    
 
-
-async def main(address,conference_id):
+async def main(address):
     """
     主函数，启动服务端协议并处理数据
     """
@@ -164,7 +127,7 @@ async def main(address,conference_id):
 
     # 创建 UDP 服务端
     transport, protocol = await loop.create_datagram_endpoint(
-        lambda: ServerProtocol(conference_id),
+        lambda: ServerVideoProtocol(),
         local_addr=address
     )
 
@@ -176,6 +139,23 @@ async def main(address,conference_id):
     finally:
         transport.close()
 
+def run_conference_1():
+    asyncio.run(main(CONFERENCE1_VIDEO_ADDRESS))
+
+def run_conference_2():
+    asyncio.run(main(CONFERENCE2_VIDEO_ADDRESS))
+
+def run_conference_3():
+    asyncio.run(main(CONFERENCE3_VIDEO_ADDRESS))
 
 if __name__ == "__main__":
-    asyncio.run(main(SERVER_ADDRESS,1))
+    p1 = Process(target=run_conference_1)
+    p2 = Process(target=run_conference_2)
+    p3 = Process(target=run_conference_3)
+
+    p1.start()
+    p2.start()
+    p3.start()
+
+    # p1.join()
+    # p2.join()
