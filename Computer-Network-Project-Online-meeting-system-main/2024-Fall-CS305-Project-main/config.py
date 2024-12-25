@@ -14,3 +14,10 @@ CHANNELS = 1  # Channels for audio capture
 RATE = 8000  # Sampling rate for audio capture
 
 camera_width, camera_height = 480, 480  # resolution for camera capture
+
+CONFERENCE1_VIDEO_ADDRESS = (f'{SERVER_IP}',21113)
+CONFERENCE1_AUDIO_ADDRESS = (f'{SERVER_IP}',21114)
+CONFERENCE2_VIDEO_ADDRESS = (f'{SERVER_IP}',21115)
+CONFERENCE2_AUDIO_ADDRESS = (f'{SERVER_IP}',21116)
+CONFERENCE3_VIDEO_ADDRESS = (f'{SERVER_IP}',21117)
+CONFERENCE3_AUDIO_ADDRESS = (f'{SERVER_IP}',21118)
