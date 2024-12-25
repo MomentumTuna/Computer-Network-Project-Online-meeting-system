@@ -1,72 +1,195 @@
-import socket
-import numpy as np
-from PIL import Image
-import io
+import asyncio
 from util import *
+import cv2
+import numpy as np
+from udp_video import*
+from keyboard import*
+from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 
-# 设置服务器地址和端口
-SERVER_ADDRESS = ('127.0.0.1', 12345)
-BUFFER_SIZE = 4096  # 每次发送的最大数据量
+SERVER_ADDRESS = ('127.0.0.1', 11111)  # 服务端地址和端口
+BUFFER_SIZE = 4096  # 每次接收的最大数据量
+CACHE_SIZE = 30  # 缓存队列大小（存储 30 帧）
 
 
-
-def send_image(socket, image):
-    byte_arr =compress_image(image)
-
-    # 发送图像数据
-    socket.sendall(len(byte_arr).to_bytes(4, 'big'))  # 发送图像的大小（4字节）
-    socket.sendall(byte_arr)  # 发送图像数据
-
-def receive_image(socket):
+class ClientProtocol(UDPVideoProtocol):
     """
-    接收服务器发送的图像数据，并解码为PIL图像
-    :param socket: 客户端socket
-    :return: PIL图像对象
+    客户端协议类，继承 UDPVideoProtocol
     """
-    # 接收图像的大小（前4字节）
-    data_size = socket.recv(4)
-    if not data_size:
-        return None
-    data_size = int.from_bytes(data_size, 'big')
+    SERVER_ADDRESS=None
+    def __init__(self,SERVER_ADDRESS):
+        super().__init__()
+        self.SERVER_ADDRESS=SERVER_ADDRESS
 
-    # 接收完整的图像数据
-    image_data = b""
-    while len(image_data) < data_size:
-        image_data += socket.recv(BUFFER_SIZE)
+    async def get_a_frame(self):
+        return await super().get_a_frame(SERVER_ADDRESS)
 
-    # 解码图像数据
-    image = Image.open(io.BytesIO(image_data))
-    return image
+    def send_end_signal(self,state):
+        """
+        发送结束信号
+        """
+        header = f"{1500}/{1500}".encode()
+        self.transport.sendto(header + b"|" + b"", self.SERVER_ADDRESS)
+        state['exit']=True
+        print("已经发送结束信号")
 
-def main():
-    # 连接到服务器
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(SERVER_ADDRESS)
+    async def image_transport(self,state):
+        """
+        捕获屏幕并将其作为帧发送到服务端
+        """
+        isOpen=state['camera_enabled']
+        isStreaming=state['is_image_transport_enabled']
+        try:
+            # 捕获屏幕或摄像头画面
+            if(isStreaming):
+                if(isOpen):
+                    image=capture_camera()
+                else:
+                    height, width= capture_camera().size  # 获取原图尺寸
+                    image = np.zeros((height, width), dtype=np.uint8)  # 全黑图像
+                    image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB)) 
 
+                    # 调用父类的 send_image 方法发送图像
+                await self.send_image(image, self.SERVER_ADDRESS)
+            else:
+                header = f"{1500}/{1500}".encode()
+                self.transport.sendto(header + b"|" + b"", self.SERVER_ADDRESS)
+                print("已经发送结束信号")
+            
+            # print("图像已发送")
+        except Exception as e:
+            print(f"发送图像时发生错误: {e}")
+    
+    
+
+    async def play_video(self,state):
+        """
+        从队列中获取帧并显示视频
+        """
+        
+                # 从父类的异步队列中获取一帧数据
+
+                # 将二进制数据转换为图片
+        if(state['is_image_transport_enabled']):
+            try:
+                    image = await self.get_a_frame()
+                    # 将 PIL 图像转换为 OpenCV 格式
+                    frame = np.array(image)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            except Exception as e:
+                    print(f"获取帧时发生错误: {e}")
+
+            # 显示图片
+            try:
+                cv2.imshow("Video Stream", frame)
+                cv2.waitKey(2)
+            except Exception as e:
+                print(f"显示视频时发生错误: {e}")
+        else:
+            cv2.destroyAllWindows()
+            print('关闭视频窗口')
+            return
+        
+        # if(state['is_image_transport_enabled']==False):
+        #     cv2.destroyAllWindows()
+        #     print('关闭视频窗口')
+        #     return
+       
+async def consule_input(state):
+    """
+    任务1：检测控制台输入并更新 state 字典
+    """
+    while True:
+        print("请输入指令 ('a'：切换 camera_enabled，'b'：切换 is_image_transport_enabled，'q'：退出程序)：")
+        user_input = await asyncio.get_event_loop().run_in_executor(None, input, ">>> ")
+
+        if state['is_image_transport_enabled']==False:
+            break
+        if user_input == 'a':
+            state['camera_enabled'] = not state['camera_enabled']
+            print(f"摄像头状态: {state['camera_enabled']}")
+        elif user_input == 'b':
+            state['is_image_transport_enabled'] = not state['is_image_transport_enabled']
+            print(f"传输状态切换为: {state['is_image_transport_enabled']}")
+        elif user_input == 'q':
+            print("退出程序...")
+            state['exit'] = True
+        else:
+            print("无效指令，请重新输入。")
+
+
+async def client_task(state,protocol):
+    # 启动接收图片的任务
+    send_task=asyncio.create_task(protocol.image_transport(state))
+    play_task=asyncio.create_task(protocol.play_video(state))
+    await send_task
+    await play_task
+    print('任务进行中')
+
+
+def check_exit(state):
+    if(state['is_image_transport_enabled']==False):
+        return True
+    else:
+        return False        
+
+async def video_streaming(address):
+    """
+    主函数，负责建立 UDP 客户端并启动任务
+    """
+    state = {
+        'is_image_transport_enabled': True,
+        'camera_enabled': True,
+        'exit': False
+    }
+    # 创建缓存队列
+    # 获取当前事件循环
+    loop = asyncio.get_running_loop()
+    # 创建 UDP 客户端
+    transport, protocol = await loop.create_datagram_endpoint(
+        lambda: ClientProtocol(address),
+        remote_addr=address
+    )
+    # main_task=asyncio.create_task(client_task(state,protocol))
+    consule_task=asyncio.create_task(consule_input(state))
     try:
         while True:
-            # 从服务器接收并解码图像
-            image = receive_image(client_socket)
-            if image is None:
-                print("No image received, exiting...")
+            # await consule_input(state)
+            await client_task(state,protocol)
+            exit=check_exit(state)
+            if(exit):
+                await client_task(state,protocol)
+                await consule_task(state)
                 break
+    except asyncio.CancelledError:
+        pass
+    finally: # 取消任务
+        
+        print('任务已完成')
+        await asyncio.sleep(0.01)
+        transport.close()
+        # try:
+        #     cv2.destroyWindow('Video Stream')
+        # except Exception as e:
+        #     print(f"关闭视频窗口时发生错误: {e}")
+        print('已释放缓存')
+        
+        loop.stop()
 
-            # 将PIL图像转换为OpenCV格式（NumPy数组）
-            image_cv = np.array(image)
 
-            # 转换为BGR格式（OpenCV使用BGR而不是RGB）
-            image_cv = cv2.cvtColor(image_cv, cv2.COLOR_RGB2BGR)
 
-            # 显示图像
-            cv2.imshow("Video Stream", image_cv)
-
-            # 按 'q' 键退出
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-    finally:
-        # 关闭socket和窗口
-        client_socket.close()
-        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    main()
+    # 初始化共享状态
+    # 启动异步主函数
+    # executor = ThreadPoolExecutor(max_workers=2)
+    try:
+        asyncio.run(video_streaming(SERVER_ADDRESS))
+    except Exception as e:
+        print("程序已终止")
+    
+    # executor.shutdown(wait=True)
+    # print("线程池已关闭")
+    print('后续逻辑')
+
+    

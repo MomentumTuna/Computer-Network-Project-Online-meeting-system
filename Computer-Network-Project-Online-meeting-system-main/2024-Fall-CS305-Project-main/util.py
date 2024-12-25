@@ -10,14 +10,13 @@ import pyautogui
 import numpy as np
 from PIL import Image, ImageGrab
 from config import *
-import random
-import string
+
 
 # audio setting
 FORMAT = pyaudio.paInt16
 audio = pyaudio.PyAudio()
-streamin = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-streamout = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=CHUNK)
+streamin = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=AUDIO_CHUNK)
+streamout = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=AUDIO_CHUNK)
 
 # print warning if no available camera
 cap = cv2.VideoCapture(0)
@@ -30,6 +29,10 @@ else:
 
 my_screen_size = pyautogui.size()
 
+def audio_device_info():
+    for i in range(audio.get_device_count()):
+        info = audio.get_device_info_by_index(i)
+        print(f"设备索引: {i}, 设备名称: {info['name']}, 最大输入通道数: {info['maxInputChannels']}")
 
 def resize_image_to_fit_screen(image, my_screen_size):
     screen_width, screen_height = my_screen_size
@@ -116,9 +119,11 @@ def capture_camera():
         raise Exception('Fail to capture frame from camera')
     return Image.fromarray(frame)
 
+def end_camera():
+    cap.release()
 
 def capture_voice():
-    return streamin.read(CHUNK)
+    return streamin.read(AUDIO_CHUNK)
 
 
 def compress_image(image, format='JPEG', quality=85):
@@ -147,41 +152,3 @@ def decompress_image(image_bytes):
     image = Image.open(img_byte_arr)
 
     return image
-
-
-def generate_id(self):
-        """
-        Generate a random 6-character alphanumeric ID.
-        """
-        return ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-
-
-def is_valid_ip(ip):
-    """
-    判断一个字符串是否是合法的IPv4地址。
-    
-    :param ip: str，待验证的IP地址
-    :return: bool，是否合法
-    """
-    # 按点分隔地址
-    parts = ip.split(".")
-    
-    # IPv4地址必须包含4部分
-    if len(parts) != 4:
-        return False
-    
-    for part in parts:
-        # 每部分必须是数字
-        if not part.isdigit():
-            return False
-        
-        # 每部分必须在0到255之间
-        num = int(part)
-        if num < 0 or num > 255:
-            return False
-        
-        # 避免前导零（如 "01", "001" 是非法的）
-        if part != str(num):
-            return False
-    
-    return True
