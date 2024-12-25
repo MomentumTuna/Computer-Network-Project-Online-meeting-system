@@ -17,21 +17,13 @@ class ClientProtocol(UDPVideoProtocol):
     客户端协议类，继承 UDPVideoProtocol
     """
     SERVER_ADDRESS=None
-    def __init__(self,SERVER_ADDRESS):
-        super().__init__()
+    def __init__(self,SERVER_ADDRESS,conference_id):
+        super().__init__(conference_id)
         self.SERVER_ADDRESS=SERVER_ADDRESS
 
     async def get_a_frame(self):
         return await super().get_a_frame(SERVER_ADDRESS)
 
-    def send_end_signal(self,state):
-        """
-        发送结束信号
-        """
-        header = f"{1500}/{1500}".encode()
-        self.transport.sendto(header + b"|" + b"", self.SERVER_ADDRESS)
-        state['exit']=True
-        print("已经发送结束信号")
 
     async def image_transport(self,state):
         """
@@ -52,7 +44,7 @@ class ClientProtocol(UDPVideoProtocol):
                     # 调用父类的 send_image 方法发送图像
                 await self.send_image(image, self.SERVER_ADDRESS)
             else:
-                header = f"{1500}/{1500}".encode()
+                header = f"{self.CONFERENCE_ID}/M/0/{1500}/{1500}".encode()
                 self.transport.sendto(header + b"|" + b"", self.SERVER_ADDRESS)
                 print("已经发送结束信号")
             
@@ -89,11 +81,7 @@ class ClientProtocol(UDPVideoProtocol):
             cv2.destroyAllWindows()
             print('关闭视频窗口')
             return
-        
-        # if(state['is_image_transport_enabled']==False):
-        #     cv2.destroyAllWindows()
-        #     print('关闭视频窗口')
-        #     return
+       
        
 async def consule_input(state):
     """
@@ -133,24 +121,24 @@ def check_exit(state):
     else:
         return False        
 
-async def video_streaming(address):
+async def video_streaming(address,conference_id):
     """
     主函数，负责建立 UDP 客户端并启动任务
     """
     state = {
         'is_image_transport_enabled': True,
         'camera_enabled': True,
-        'exit': False
+        'mic_enabled':True
     }
     # 创建缓存队列
     # 获取当前事件循环
     loop = asyncio.get_running_loop()
     # 创建 UDP 客户端
     transport, protocol = await loop.create_datagram_endpoint(
-        lambda: ClientProtocol(address),
+        lambda: ClientProtocol(address,conference_id),
         remote_addr=address
     )
-    # main_task=asyncio.create_task(client_task(state,protocol))
+    
     consule_task=asyncio.create_task(consule_input(state))
     try:
         while True:
@@ -183,10 +171,7 @@ if __name__ == "__main__":
     # 初始化共享状态
     # 启动异步主函数
     # executor = ThreadPoolExecutor(max_workers=2)
-    try:
-        asyncio.run(video_streaming(SERVER_ADDRESS))
-    except Exception as e:
-        print("程序已终止")
+    asyncio.run(video_streaming(SERVER_ADDRESS,1))
     
     # executor.shutdown(wait=True)
     # print("线程池已关闭")
