@@ -1,9 +1,10 @@
-from socket import *
+import socket
 import time
 import tkinter
-from tkinter import messagebox
+from tkinter import messagebox, scrolledtext
 import threading
 from util import *
+import json
 
 IP = '127.0.0.1'
 SERVER_PORT = 50000
@@ -13,6 +14,7 @@ show = 1
 users = []
 chat = '0'
 chat_pri = ''
+conference_id = None
 
 def init_login_window():
     global IP, PORT, user
@@ -56,7 +58,7 @@ def Login(root0,entryIP,entryPORT,entryUSER):
     IP = entryIP.get()
     PORT = entryPORT.get()
     user = entryUSER.get()
-    if not is_valid_ip(IP):
+    if not IP:
         tkinter.messagebox.showwarning('warning', message='WrongIP!')
     elif not PORT:
         tkinter.messagebox.showwarning('warning', message='WrongPort!')
@@ -68,7 +70,7 @@ class ClientMain:
         self.name = name
         self.host = host
         self.port = port
-        self.client_socket = socket(AF_INET, SOCK_STREAM)
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def connect_to_server(self):
         self.client_socket.connect((self.host, self.port))
@@ -78,11 +80,15 @@ class ClientMain:
         '''
             通用方法：向服务器发送请求并接受应答
         '''
+        global IP,PORT
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.connect(self.server_addr)
-                sock.sendall(request.encode())
-                response = sock.recv(1024).decode()
+                sock.connect((IP,int(PORT)))
+                request = json.dumps(request)
+                sock.sendall(request.encode('utf-8'))
+                sock.accept()
+                response = json.loads(sock.recv(1024).decode())
+                
                 return response
         except Exception as e:
             print(f"[Error] Failed to send request: {e}")
@@ -90,7 +96,7 @@ class ClientMain:
         
     def create_conference(self):
         request = {"action": "create_conference"}
-        response = self.send_request(request)
+        response = json.loads(self.send_request(request).decode())
         if response and response.get("status") == "success":
             self.conference_id = response.get("conference_id")
             self.on_meeting = True
@@ -113,7 +119,7 @@ class ClientMain:
             print("[Warn] You are not in any conference.")
             return
 
-        request = {"action": "quit_conference", "conference_id": self.conference_id}
+        request = json.dumps({"action": "quit_conference", "conference_id": self.conference_id})
         response = self.send_request(request)
         if response and response.get("status") == "success":
             self.on_meeting = False
@@ -130,7 +136,7 @@ class ClientMain:
             print("[Warn] You are not in any conference.")
             return
 
-        request = {"action": "cancel_conference", "conference_id": self.conference_id}
+        request = json.dumps({"action": "cancel_conference", "conference_id": self.conference_id})
         response = self.send_request(request)
         if response and response.get("status") == "success":
             self.on_meeting = False
@@ -139,7 +145,30 @@ class ClientMain:
         else:
             print("[Error] Failed to cancel the conference.")
     
-    
+    def onClick_join_conf(self):
+        global conference_id
+        input_ui = tkinter.Tk()
+        input_ui.geometry("600x375+300+100")  
+        label_conf_id = tkinter.Label(input_ui,text="Conference ID: ")
+        label_conf_id.place(x=200,y=120,width=150,height=50)
+        entry_conf_id = tkinter.Entry(input_ui, width=100, textvariable=conference_id)
+        entry_conf_id.place(x=330,y=125,width=200,height=25)
+        loginButton = tkinter.Button(input_ui, text="Enter", command=lambda: self.onClick_join_enter(input_ui, entry_conf_id))
+        loginButton.place(x=250, y=200, width=80, height=50)
+        
+        if not conference_id:
+            self.join_conference(conference_id)
+        
+    def onClick_join_enter(self,input_ui,entry_conf_id):
+        global conference_id
+        conference_id = entry_conf_id.get()
+        while True:
+            if conference_id:
+                input_ui.destroy()
+                break
+            else:
+                continue
+        
     
     def open_ui(self):
         """
@@ -156,15 +185,40 @@ class ClientMain:
         name_entry.pack(padx=10, pady=5)
         """
 
-        tkinter.Button(client_ui, text="create").pack(side='left', anchor='n', padx=10, pady=10)
-        tkinter.Button(client_ui, text="quit").pack(side='left', anchor='n', padx=10, pady=10)
-        tkinter.Button(client_ui, text="join").pack(side='left', anchor='n', padx=10, pady=10)
-        tkinter.Button(client_ui, text="cancel").pack(side='left', anchor='n', padx=10, pady=10)
-        tkinter.Button(client_ui, text="switch").pack(side='left', anchor='n', padx=10, pady=10)
+        tkinter.Button(client_ui, text="create",command=self.create_conference).pack(side='left', anchor='n', padx=10, pady=10)
+        tkinter.Button(client_ui, text="quit",command=self.quit_conference).pack(side='left', anchor='n', padx=10, pady=10)
+        tkinter.Button(client_ui, text="join",command=self.onClick_join_conf).pack(side='left', anchor='n', padx=10, pady=10)
+        tkinter.Button(client_ui, text="cancel",command=self.cancel_conference).pack(side='left', anchor='n', padx=10, pady=10)
+        #tkinter.Button(client_ui, text="switch").pack(side='left', anchor='n', padx=10, pady=10)
+        # Talking part
+        listbox = tkinter.scrolledtext.ScrolledText(client_ui)
+        listbox.place(x=775, y=25, width=350, height=500)
+        listbox.tag_config('tag1', foreground='blue', backgroun="white")
+        listbox.insert(tkinter.END, 'Welcome ' + user + ' join!', 'tag1')
+        listbox.insert(tkinter.END, '\n')
 
+        # Talking-Entry
+        INPUT = tkinter.StringVar()
+        INPUT.set('')
+        entryInput = tkinter.Entry(client_ui, width=120, textvariable=INPUT)
+        entryInput.place(x=775, y=550, width=350, height=100)
+
+        def send_message():
+            message = entryInput.get()
+            socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(message.encode(), (IP, int(PORT)))
+            print("send message:", message)
+            print("\nto : "+IP+"; "+PORT+"\n")
+            INPUT.set('')
+            return 'break'
+
+        but_send = tkinter.Button(client_ui, text="SEND",command=send_message)
+        but_send.place(x=1050, y=660, width=75, height=50)
+        
         self.client_ui = client_ui
         client_ui.mainloop()
-''
+        
+        
+
 
 if __name__ == "__main__":
     init_login_window()

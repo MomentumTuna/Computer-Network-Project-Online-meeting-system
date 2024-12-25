@@ -12,6 +12,7 @@ from PIL import Image, ImageGrab
 from config import *
 
 
+
 # audio setting
 FORMAT = pyaudio.paInt16
 audio = pyaudio.PyAudio()
@@ -152,3 +153,16 @@ def decompress_image(image_bytes):
     image = Image.open(img_byte_arr)
 
     return image
+
+
+import random
+import string
+
+def generate_code(length=6):
+    # 选择字符集：数字 + 大写字母 + 小写字母
+    characters = string.digits + string.ascii_letters  # digits (0-9) + ascii_letters (a-zA-Z)
+    
+    # 随机选择 `length` 个字符组成码
+    code = ''.join(random.choice(characters) for _ in range(length))
+    
+    return code
