@@ -6,68 +6,12 @@ import threading
 from util import *
 import json
 
-IP = '127.0.0.1'
-SERVER_PORT = 50000
-user = ''
-listbox1 = ''
-show = 1
-users = []
-chat = '0'
-chat_pri = ''
-conference_id = None
-
-def init_login_window():
-    global IP, PORT, user
-    # 登录_Part
-    root0 = tkinter.Tk()
-    root0.geometry("450x225+300+100")
-    root0.title('Log in')
-    root0.resizable(0, 0)
-    one = tkinter.Label(root0, width=300, height=150)
-    one.pack()
-    IP = tkinter.StringVar()
-    IP.set('')
-    PORT = tkinter.StringVar()
-    PORT.set('')
-    USER = tkinter.StringVar()
-    USER.set('')
-
-    labelIP = tkinter.Label(root0, text='Server_IP')
-    labelIP.place(x=120, y=5, width=100, height=40)
-    entryIP = tkinter.Entry(root0, width=60, textvariable=IP)
-    entryIP.place(x=220, y=10, width=100, height=30)
-
-    labelPORT = tkinter.Label(root0, text='Server_Port')
-    labelPORT.place(x=120, y=40, width=100, height=40)
-    entryPORT = tkinter.Entry(root0, width=60, textvariable=PORT)
-    entryPORT.place(x=220, y=45, width=100, height=30)
-
-    labelUSER = tkinter.Label(root0, text='Username')
-    labelUSER.place(x=120, y=75, width=100, height=40)
-    entryUSER = tkinter.Entry(root0, width=60, textvariable=USER)
-    entryUSER.place(x=220, y=80, width=100, height=30)
-
-    loginButton = tkinter.Button(root0, text="登录", command=lambda: Login(root0, entryIP, entryPORT, entryUSER))
-    loginButton.place(x=175, y=150, width=40, height=25)
-    root0.bind('<Return>', lambda event: Login(root0, entryIP, entryPORT, entryUSER))
-    root0.mainloop()
-    return root0,entryIP,entryPORT,entryUSER
-
-def Login(root0,entryIP,entryPORT,entryUSER):
-    global IP, PORT, user
-    IP = entryIP.get()
-    PORT = entryPORT.get()
-    user = entryUSER.get()
-    if not IP:
-        tkinter.messagebox.showwarning('warning', message='WrongIP!')
-    elif not PORT:
-        tkinter.messagebox.showwarning('warning', message='WrongPort!')
-    else:
-        root0.destroy()
-
 class ClientMain:
-    def __init__(self, name, host='127.0.0.1', port=12345):
-        self.name = name
+    def __init__(self, user='', host='127.0.0.1', port=12345):
+        self.user = user
+        self.serverIP = ''
+        self.serverPort = 0
+        self.conference_id = ''
         self.host = host
         self.port = port
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -80,16 +24,11 @@ class ClientMain:
         '''
             通用方法：向服务器发送请求并接受应答
         '''
-        global IP,PORT
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.connect((IP,int(PORT)))
-                request = json.dumps(request)
-                sock.sendall(request.encode('utf-8'))
-                sock.accept()
-                response = json.loads(sock.recv(1024).decode())
-                
-                return response
+            request = json.dumps(request)
+            self.client_socket.send(request.encode('utf-8'))
+            response = json.loads(self.client_socket.recv().decode())
+            return response
         except Exception as e:
             print(f"[Error] Failed to send request: {e}")
             return None
@@ -153,8 +92,8 @@ class ClientMain:
         label_conf_id.place(x=200,y=120,width=150,height=50)
         entry_conf_id = tkinter.Entry(input_ui, width=100, textvariable=conference_id)
         entry_conf_id.place(x=330,y=125,width=200,height=25)
-        loginButton = tkinter.Button(input_ui, text="Enter", command=lambda: self.onClick_join_enter(input_ui, entry_conf_id))
-        loginButton.place(x=250, y=200, width=80, height=50)
+        enterButton = tkinter.Button(input_ui, text="Enter", command=lambda: self.onClick_join_enter(input_ui, entry_conf_id))
+        enterButton.place(x=250, y=200, width=80, height=50)
         
         if not conference_id:
             self.join_conference(conference_id)
@@ -168,8 +107,54 @@ class ClientMain:
                 break
             else:
                 continue
-        
+            
+    def init_login_window(self):
+        # 登录_Part
+        root0 = tkinter.Tk()
+        root0.geometry("450x225+300+100")
+        root0.title('Log in')
+        root0.resizable(0, 0)
+        one = tkinter.Label(root0, width=300, height=150)
+        one.pack()
+        IP = tkinter.StringVar()
+        IP.set('')
+        PORT = tkinter.StringVar()
+        PORT.set('')
+        USER = tkinter.StringVar()
+        USER.set('')
+
+        labelIP = tkinter.Label(root0, text='Server_IP')
+        labelIP.place(x=120, y=5, width=100, height=40)
+        entryIP = tkinter.Entry(root0, width=60, textvariable=IP)
+        entryIP.place(x=220, y=10, width=100, height=30)
+
+        labelPORT = tkinter.Label(root0, text='Server_Port')
+        labelPORT.place(x=120, y=40, width=100, height=40)
+        entryPORT = tkinter.Entry(root0, width=60, textvariable=PORT)
+        entryPORT.place(x=220, y=45, width=100, height=30)
+
+        labelUSER = tkinter.Label(root0, text='Username')
+        labelUSER.place(x=120, y=75, width=100, height=40)
+        entryUSER = tkinter.Entry(root0, width=60, textvariable=USER)
+        entryUSER.place(x=220, y=80, width=100, height=30)
+
+        loginButton = tkinter.Button(root0, text="登录", command=lambda: self.Login(root0, entryIP, entryPORT, entryUSER))
+        loginButton.place(x=175, y=150, width=40, height=25)
+        root0.bind('<Return>', lambda event: self.Login(root0, entryIP, entryPORT, entryUSER))
+        root0.mainloop()
+        return root0,entryIP,entryPORT,entryUSER
     
+    def Login(self, root0,entryIP,entryPORT,entryUSER):
+        self.serverIP = entryIP.get()
+        self.serverPort = int(entryPORT.get())
+        self.user = entryUSER.get()
+        if not self.serverIP:
+            tkinter.messagebox.showwarning('warning', message='WrongIP!')
+        elif not self.serverPort:
+            tkinter.messagebox.showwarning('warning', message='WrongPort!')
+        else:
+            root0.destroy()
+
     def open_ui(self):
         """
         part UI
@@ -194,7 +179,7 @@ class ClientMain:
         listbox = tkinter.scrolledtext.ScrolledText(client_ui)
         listbox.place(x=775, y=25, width=350, height=500)
         listbox.tag_config('tag1', foreground='blue', backgroun="white")
-        listbox.insert(tkinter.END, 'Welcome ' + user + ' join!', 'tag1')
+        listbox.insert(tkinter.END, 'Welcome ' + self.user + ' join!', 'tag1')
         listbox.insert(tkinter.END, '\n')
 
         # Talking-Entry
@@ -218,11 +203,9 @@ class ClientMain:
         client_ui.mainloop()
         
         
-
-
 if __name__ == "__main__":
-    init_login_window()
-    client = ClientMain(user)
+    client = ClientMain()
+    client.init_login_window()
     client.open_ui()
 
 
