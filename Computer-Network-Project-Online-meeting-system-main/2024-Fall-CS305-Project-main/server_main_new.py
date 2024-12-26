@@ -195,7 +195,7 @@ class ServerMain:
                     break
 
                 request = json.loads(data)
-                action = request.get("action")
+                action = request.get("acti")
 
                 if action == "login":
                     username = request.get("username")
