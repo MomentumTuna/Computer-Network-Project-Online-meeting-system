@@ -6,6 +6,8 @@ import threading
 from util import *
 import json
 
+conference_id = ''
+
 class ClientMain:
     def __init__(self, user='', host='127.0.0.1', port=12345):
         self.user = user
@@ -16,26 +18,32 @@ class ClientMain:
         self.port = port
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    def connect_to_server(self):
-        self.client_socket.connect((self.host, self.port))
-        #threading.Thread(target=self.)
-        
     def send_request(self, request):
-        '''
-            通用方法：向服务器发送请求并接受应答
-        '''
-        try:
-            request = json.dumps(request)
-            self.client_socket.send(request.encode('utf-8'))
-            response = json.loads(self.client_socket.recv().decode())
-            return response
-        except Exception as e:
-            print(f"[Error] Failed to send request: {e}")
-            return None
+            '''
+                通用方法：向服务器发送请求并接受应答
+            '''
+            try:
+                request = json.dumps(request)
+                self.client_socket.send(request.encode('utf-8'))
+                response = self.client_socket.recv(1024)
+                response = json.loads(response.decode())
+                return response
+            except Exception as e:
+                print(f"[Error] Failed to send request: {e}")
+                return None
+            
+    def connect_to_server(self):
+        self.client_socket.connect((self.serverIP, self.serverPort))
+        request = {"action":"register","username": self.user}
+        print(type(request),request)
+        response = self.send_request(request)
+        if response.get and response.get("status") == "success":
+            print("Successfully registered into the server")
+        #threading.Thread(target=self.)
         
     def create_conference(self):
         request = {"action": "create_conference"}
-        response = json.loads(self.send_request(request).decode())
+        response = self.send_request(request)
         if response and response.get("status") == "success":
             self.conference_id = response.get("conference_id")
             self.on_meeting = True
@@ -43,7 +51,7 @@ class ClientMain:
         else:
             print("[Error] Failed to create conference.")
         
-    def join_conference(self, conference_id):
+    def join_conference(self,conference_id):
         request = {"action": "join_conference", "conference_id": conference_id}
         response = self.send_request(request)
         if response and response.get("status") == "success":
@@ -90,19 +98,16 @@ class ClientMain:
         input_ui.geometry("600x375+300+100")  
         label_conf_id = tkinter.Label(input_ui,text="Conference ID: ")
         label_conf_id.place(x=200,y=120,width=150,height=50)
-        entry_conf_id = tkinter.Entry(input_ui, width=100, textvariable=conference_id)
+        entry_conf_id = tkinter.Entry(input_ui, width=100, textvariable=self.conference_id)
         entry_conf_id.place(x=330,y=125,width=200,height=25)
         enterButton = tkinter.Button(input_ui, text="Enter", command=lambda: self.onClick_join_enter(input_ui, entry_conf_id))
         enterButton.place(x=250, y=200, width=80, height=50)
         
-        if not conference_id:
-            self.join_conference(conference_id)
         
     def onClick_join_enter(self,input_ui,entry_conf_id):
-        global conference_id
-        conference_id = entry_conf_id.get()
+        self.join_conference(conference_id)
         while True:
-            if conference_id:
+            if self.conference_id:
                 input_ui.destroy()
                 break
             else:
@@ -192,7 +197,7 @@ class ClientMain:
             message = entryInput.get()
             socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(message.encode(), (IP, int(PORT)))
             print("send message:", message)
-            print("\nto : "+IP+"; "+PORT+"\n")
+            print("\nto : "+self.serverIP+"; "+self.serverPort+"\n")
             INPUT.set('')
             return 'break'
 
@@ -203,9 +208,11 @@ class ClientMain:
         client_ui.mainloop()
         
         
+
 if __name__ == "__main__":
     client = ClientMain()
     client.init_login_window()
+    client.connect_to_server()
     client.open_ui()
 
 
